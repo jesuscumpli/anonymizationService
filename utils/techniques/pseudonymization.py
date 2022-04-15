@@ -1,12 +1,16 @@
 import random
 import pandas as pd
 import random
+import hmac
+import hashlib
+from cryptography.fernet import Fernet
 
 ################################################################################
 # FUNCTIONS TO SUBSTITUTE IDENTIFIERS WITH A REVERSIBLE AND SECURE PSEUDONYM   #
 #########################################################################################
 # TECHNIQUES BASED ON Guidelines on shaping technology according to GDPR provisions.pdf #
 #########################################################################################
+from utils.techniques.generateKeys import load_secret_key, load_encription_key
 
 """
 input dataframe: dataset origen
@@ -16,7 +20,7 @@ objective: apply a pseudonymous technique to the specified identifiers columns
 """
 
 
-def counter_pseudonymization(dataframe, identifier):
+def pseudonymization_counter(dataframe, identifier):
     """
     Counter is the simplest pseudonymous function. The identifiers are substituted by a number
      chosen by a monotonic counter. First, a seed 𝑠 is set to 0 (for instance) and then it is incremented.
@@ -38,7 +42,7 @@ def counter_pseudonymization(dataframe, identifier):
     return dfFinal, dfMapping
 
 
-def rng_pseudonymization(dataframe, identifier):
+def pseudonymization_rng(dataframe, identifier):
     """
     Two options are available to create this mapping: a true random number generator or a cryptographic pseudo-random
     generator. It should be noted that in both cases, without due care, collisions can occur.
@@ -59,24 +63,65 @@ def rng_pseudonymization(dataframe, identifier):
     return dfFinal, dfMapping
 
 
-def pseudonymization_mac(dataframe, identifiers):
-    pass
+def pseudonymization_hmac(dataframe, identifier):
+    """
+    MAC is generally considered as a robust pseudonymisation technique from a data protection point of view, since
+    reverting the pseudonym is infeasible, as long as the key has not be compromised.
+    """
+    secret_key = load_secret_key()
+    digest_maker = hmac.new(secret_key, b'', hashlib.sha256)
+    dfFinal = dataframe.copy(deep=True)
+    for index, row in dfFinal.iterrows():
+        msg = str(row[identifier])
+        msg_bytes = msg.encode()
+        digest_maker.update(msg_bytes)
+        dfFinal[identifier][index] = digest_maker.hexdigest()
+    return dfFinal
 
 
-def pseudonymization_encryption(dataframe, identifiers):
-    pass
-
-
-def pseudonymization_email(dataframe, identifiers):
-    pass
-
-
-def pseudonymization_ip_address(dataframe, identifiers):
-    pass
+def pseudonymization_encryption(dataframe, identifier):
+    """
+    Fernet guarantees that a message encrypted using it cannot be manipulated or read without the key.
+    Fernet is an implementation of symmetric (also known as “secret key”) authenticated cryptography.
+    """
+    encription_key = load_encription_key()
+    fernet = Fernet(encription_key)
+    dfFinal = dataframe.copy(deep=True)
+    for index, row in dfFinal.iterrows():
+        msg = str(row[identifier])
+        msg_bytes = msg.encode()
+        encMsg = fernet.encrypt(msg_bytes)
+        dfFinal[identifier][index] = encMsg.decode()
+    return dfFinal
 
 
 def revert_pseudonymization_with_mapping_table(dfFinal, dfMapping, identifier):
     dfReversible = dfFinal.copy(deep=True)
     for index, row in dfMapping.iterrows():
         dfReversible.loc[dfReversible[identifier] == row["final"], identifier] = row["origen"]
+    return dfReversible
+
+
+def revert_pseudonymization_hmac(dfOrigen, dfFinal, identifier):
+    secret_key = load_secret_key()
+    digest_maker = hmac.new(secret_key, b'', hashlib.sha256)
+    dfReversible = dfFinal.copy(deep=True)
+    for index, row in dfOrigen.iterrows():
+        msg = str(row[identifier])
+        msg_bytes = msg.encode()
+        digest_maker.update(msg_bytes)
+        digest = digest_maker.hexdigest()
+        dfReversible.loc[dfReversible[identifier] == digest, identifier] = row[identifier]
+    return dfReversible
+
+
+def revert_pseudonymization_encryption(dfFinal, identifier):
+    key = load_encription_key()
+    fernet = Fernet(key)
+    dfReversible = dfFinal.copy(deep=True)
+    for index, row in dfReversible.iterrows():
+        msg = str(row[identifier])
+        msg_bytes = msg.encode()
+        decMsg = fernet.decrypt(msg_bytes)
+        dfReversible[identifier][index] = decMsg.decode()
     return dfReversible
