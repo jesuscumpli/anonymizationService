@@ -1,6 +1,9 @@
 ##########################################
 # FUNCTIONS WITH ANONYMITY PROPERTIES  #
 ##########################################
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 """
 Definition of K-ANONYMITY:
@@ -36,36 +39,67 @@ class Anonymization:
         """
         self.dataframeOrigen = dataframe.copy(deep=True)
         self.dataframeFinal = dataframe.copy(deep=True)
-        self.groups = None  # List of groups of samples with the same quasi-identifiers
+        self.groups = None  # List of groups of rows with the same quasi-identifiers
+        self.groups_index = None # List of groups of index with the same quasi-identifiers
         self.identifiers_index = identifiers_index
         self.quasi_identifiers_index = quasi_identifiers_index
         self.sensible_index = sensible_index
         self.non_sensible_index = non_sensible_index
+        self.generate_groups()
 
     def generate_groups(self):
         """
         Iterate the self.dataframeFinal and generate a list of groups with the same quasi-identifiers
         """
-        self.groups = []
-        pass
+        self.groups = {}
+        self.groups_index = {}
+        for index, row in self.dataframeFinal.iterrows():
+            valueQuasiIdentifier = ""
+            for i in self.quasi_identifiers_index:
+                valueQuasiIdentifier += str(row[i])
+            if not valueQuasiIdentifier in self.groups:
+                self.groups[valueQuasiIdentifier] = []
+                self.groups_index[valueQuasiIdentifier] = []
+            self.groups[valueQuasiIdentifier].append(row)
+            self.groups_index[valueQuasiIdentifier].append(index)
 
     def achieve_k_anonymity(self, k):
         """
         Apply diferent techniques in the dataframe Origen until get at least k-1 individuals with the same
         quasi-identifiers for each individual in the dataset.
-        - Check if each group in self.groups has k samples.
         :param k: k value of k-anonymity property
         :return: dataframeFinal
         """
-        pass
+        keys_to_del = []
+        for key, value in self.groups.items():
+            if len(value) < k:
+                self.dataframeFinal.drop(self.groups_index[key], axis=0, inplace=True)
+                keys_to_del.append(key)
+        for key in keys_to_del:
+            del self.groups[key]
+            del self.groups_index[key]
+
+    def check_k_anonymity_better(self, k):
+        """
+        Check if dataframeFinal has k-anonymity property
+        :param k: k property
+        :return: Boolean
+        - Check if the number of unique rows by a list of columns are greater than k
+        """
+        unique_counts_rows = self.dataframeFinal.value_counts(self.quasi_identifiers_index).tolist()
+        return all(n >= k for n in unique_counts_rows)
 
     def check_k_anonymity(self, k):
         """
         Check if dataframeFinal has k-anonymity property
         :param k: k property
         :return: Boolean
+        - Check if each group in self.groups has k samples.
         """
-        pass
+        for key, rows in self.groups_index.items():
+            if len(rows) < k:
+                return False
+        return True
 
     def achieve_l_diversity(self, l):
         """
@@ -74,16 +108,56 @@ class Anonymization:
         :param l: l-property
         :return: dataframeFinal
         """
-        pass
+        keys_to_del = []
+        for key, rows in self.groups.items():
+            l_res = 0
+            sensitiveValues = {}
+            for i in self.sensible_index:
+                sensitiveValues[i] = []
+            for row in rows:
+                for i in self.sensible_index:
+                    value = row[i]
+                    if value not in sensitiveValues[i]:
+                        sensitiveValues[i].append(value)
+            for i in self.sensible_index:
+                length = len(sensitiveValues[i])
+                if length >= l_res:
+                    l_res = length
+            if l_res < l:
+                self.dataframeFinal.drop(self.groups_index[key], axis=0, inplace=True)
+                keys_to_del.append(key)
+        for key in keys_to_del:
+            del self.groups[key]
+            del self.groups_index[key]
 
-    def check_l_diversity(self, k):
+
+    def check_l_diversity(self, l):
         """
         Check if dataframeFinal has l-diversity property.
         - Check if each group in self.groups has l samples with different sensitive values.
         :param l: l property
         :return: Boolean
         """
-        pass
+        for key, rows in self.groups.items():
+            l_res = 0
+            sensitiveValues = {}
+
+            for i in self.sensible_index:
+                sensitiveValues[i] = []
+
+            for row in rows:
+                for i in self.sensible_index:
+                    value = row[i]
+                    if value not in sensitiveValues[i]:
+                        sensitiveValues[i].append(value)
+
+            for i in self.sensible_index:
+                length = len(sensitiveValues[i])
+                if length >= l_res:
+                    l_res = length
+            if l_res < l:
+                return False
+        return True
 
     def achieve_t_closeness(self, t):
         """
@@ -92,16 +166,39 @@ class Anonymization:
         :param t: t-property
         :return: dataframeFinal
         """
-        pass
+        keys_to_del = []
+        list_index = self.quasi_identifiers_index
+        list_index.extend(self.sensible_index)
+        list_index.extend(self.non_sensible_index)
+        for key, rows in self.groups.items():
+            df = pd.DataFrame(rows)
+            for col in list_index:
+                statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], df[col])
+                if pvalue <= t:
+                    self.dataframeFinal.drop(self.groups_index[key], axis=0, inplace=True)
+                    keys_to_del.append(key)
+                    break
+        for key in keys_to_del:
+            del self.groups[key]
+            del self.groups_index[key]
 
-    def check_t_closeness(self, k):
+    def check_t_closeness(self, t):
         """
-        Check if dataframeFinal has l-diversity property
+        Check if dataframeFinal has t-closeness property
         - Check if each group in self.groups has the same distribution with the self.dataframeOrigen
         :param t: t property
         :return: Boolean
         """
-        pass
+        list_index = self.quasi_identifiers_index
+        list_index.extend(self.sensible_index)
+        list_index.extend(self.non_sensible_index)
+        for key, rows in self.groups.items():
+            df2 = pd.DataFrame(rows)
+            for col in list_index:
+                statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], df2[col])
+                if pvalue <= t:
+                    return False
+        return True
 
     def integrate_arx(self):
         """
