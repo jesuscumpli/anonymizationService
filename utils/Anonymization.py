@@ -65,8 +65,9 @@ class Anonymization:
 
     def achieve_k_anonymity(self, k):
         """
-        Apply diferent techniques in the dataframe Origen until get at least k-1 individuals with the same
+        Get at least k-1 individuals with the same
         quasi-identifiers for each individual in the dataset.
+        Delete groups which lower k size array.
         :param k: k value of k-anonymity property
         :return: dataframeFinal
         """
@@ -103,7 +104,7 @@ class Anonymization:
 
     def achieve_l_diversity(self, l):
         """
-        Apply diferent techniques in the dataframe Origen until get at least L different
+        Delete groups; until get at least L different
         values for a sensitive attribute in each group.
         :param l: l-property
         :return: dataframeFinal
@@ -161,18 +162,14 @@ class Anonymization:
 
     def achieve_t_closeness(self, t):
         """
-        Apply diferent techniques in the dataframeOrigen until get all the groups has a similar distribution of
-        dataframeOrigen.
+        Delete all the groups has not a similar distribution of dataframeOrigen.
         :param t: t-property
         :return: dataframeFinal
         """
         keys_to_del = []
-        list_index = self.quasi_identifiers_index
-        list_index.extend(self.sensible_index)
-        list_index.extend(self.non_sensible_index)
         for key, rows in self.groups.items():
             df = pd.DataFrame(rows)
-            for col in list_index:
+            for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], df[col])
                 if pvalue <= t:
                     self.dataframeFinal.drop(self.groups_index[key], axis=0, inplace=True)
@@ -189,12 +186,9 @@ class Anonymization:
         :param t: t property
         :return: Boolean
         """
-        list_index = self.quasi_identifiers_index
-        list_index.extend(self.sensible_index)
-        list_index.extend(self.non_sensible_index)
         for key, rows in self.groups.items():
             df2 = pd.DataFrame(rows)
-            for col in list_index:
+            for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], df2[col])
                 if pvalue <= t:
                     return False

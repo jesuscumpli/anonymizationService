@@ -36,9 +36,9 @@ dfFinal = generalization_numerical_interval(dfFinal, "avg_year", intervals)
 dfFinal = generalization_numerical_interval(dfFinal, "total_guaranteed", intervals)
 dfFinal = generalization_numerical_interval(dfFinal, "fully_guaranteed", intervals)
 
-data1 = dfOrigen.value_counts(quasi_identifiers)
+data1 = dfFinal.value_counts(quasi_identifiers)
 
-model = Anonymization(dfOrigen, identifiers, quasi_identifiers, non_sensible, sensible)
+model = Anonymization(dfFinal, identifiers, quasi_identifiers, non_sensible, sensible)
 
 model.achieve_k_anonymity(2)
 if model.check_k_anonymity_better(2):
