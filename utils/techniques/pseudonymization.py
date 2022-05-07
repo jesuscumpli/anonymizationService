@@ -35,7 +35,7 @@ def pseudonymization_counter(dataframe, identifier):
     counter = 1
     for index, row in dfFinal.iterrows():
         mapping_table["origen"].append(dfFinal[identifier][index])
-        dfFinal[identifier][index] = counter
+        dfFinal.at[index, identifier] = counter
         mapping_table["final"].append(counter)
         counter += 1
     dfMapping = pd.DataFrame(mapping_table)
@@ -57,7 +57,7 @@ def pseudonymization_rng(dataframe, identifier):
     for index, row in dfFinal.iterrows():
         mapping_table["origen"].append(dfFinal[identifier][index])
         pseudo_number = random.randint(1, limit)
-        dfFinal[identifier][index] = pseudo_number
+        dfFinal.at[index, identifier] = pseudo_number
         mapping_table["final"].append(pseudo_number)
     dfMapping = pd.DataFrame(mapping_table)
     return dfFinal, dfMapping
@@ -75,7 +75,7 @@ def pseudonymization_hmac(dataframe, identifier):
         msg = str(row[identifier])
         msg_bytes = msg.encode()
         digest_maker.update(msg_bytes)
-        dfFinal[identifier][index] = digest_maker.hexdigest()
+        dfFinal.at[index, identifier] = digest_maker.hexdigest()
     return dfFinal
 
 
@@ -91,7 +91,7 @@ def pseudonymization_encryption(dataframe, identifier):
         msg = str(row[identifier])
         msg_bytes = msg.encode()
         encMsg = fernet.encrypt(msg_bytes)
-        dfFinal[identifier][index] = encMsg.decode()
+        dfFinal.at[index, identifier] = encMsg.decode()
     return dfFinal
 
 
@@ -123,5 +123,5 @@ def revert_pseudonymization_encryption(dfFinal, identifier):
         msg = str(row[identifier])
         msg_bytes = msg.encode()
         decMsg = fernet.decrypt(msg_bytes)
-        dfReversible[identifier][index] = decMsg.decode()
+        dfReversible.at[index, identifier] = decMsg.decode()
     return dfReversible
