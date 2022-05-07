@@ -1,0 +1,1 @@
+COLUMNS_TYPES = ["Identifiers","Quasi-Identifiers","Sensitive attributes"]
