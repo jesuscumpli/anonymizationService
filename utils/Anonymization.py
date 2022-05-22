@@ -11,6 +11,7 @@ from scipy import stats
 
 from utils.techniques.generalization import generalization_categorical_semantic, generalization_mask, \
     generalization_numerical_interval
+from utils.techniques.perturbation import *
 
 """
 Definition of K-ANONYMITY:
@@ -161,7 +162,7 @@ class Anonymization:
             for i in self.sensible_index:
                 length = len(sensitiveValues[i])
                 if length >= l_group:
-                    l_res = length
+                    l_group = length
             if l_group < l:
                 l = l_group
         self.l = l
@@ -179,18 +180,18 @@ class Anonymization:
             dfAux = self.dataframeFinal[self.dataframeFinal.index.isin(rows_index)]
             for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], dfAux[col])
-                if pvalue > t:  # Reject Null Hypothesis, accept Alternative Hypothesis (The distributions are different)
+                if statistic < t:  # Reject Null Hypothesis, accept Alternative Hypothesis (The distributions are different)
                     return False
         return True
 
     def get_t_closeness(self):
-        t = 0.0
+        t = 1.0
         groups_index = self.__generate_groups__(self.dataframeFinal)
         for key, rows_index in groups_index.items():
             dfAux = self.dataframeFinal[self.dataframeFinal.index.isin(rows_index)]
             for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], dfAux[col])
-                if pvalue > t:
+                if statistic < t:
                     t = statistic
         self.t = t
         return t
@@ -219,10 +220,10 @@ class Anonymization:
                 pvalue = 1.0
                 for col in self.sensible_index:
                     statistic, pvalue = stats.ks_2samp(df[col], dfAux[col])
-                    if pvalue > t:
+                    if statistic < t:
                         dfResult.drop(dfGroups[key], axis=0, inplace=True)
                         break
-                if pvalue > t:
+                if statistic < t:
                     continue
             if l is not None:
                 # L-DIVERSITY
@@ -329,7 +330,51 @@ class Anonymization:
                                                                           best_utility, best_df)
                 if best_utility >= self.stop_utility:
                     return best_df, best_utility
-            # TODO PERTURBATION TECHNIQUES
+            # PERTURBATION TECHNIQUES
+            try:
+                newDf = perturbation_permutation(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                          perturbation + 0.1,
+                                                                          best_utility, best_df)
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+            try:
+                newDf = perturbation_noise_addition(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                          perturbation + 0.1,
+                                                                          best_utility, best_df)
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+            try:
+                num_groups = np.arange(0.1, 0.9, 0.2)
+                for num_group in num_groups:
+                    newDf = perturbation_micro_aggregation(df, col, num_group)
+                    dfResult = self.__achieve_klt__(newDf, k, l, t)
+                    utility = (float(len(dfResult)) / len(df)) / (perturbation + num_group)
+                    if utility > best_utility:
+                        best_df = dfResult
+                        best_utility = utility
+                    best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                              perturbation + num_group,
+                                                                              best_utility, best_df)
+                    if best_utility >= self.stop_utility:
+                        return best_df, best_utility
+            except:
+                pass
         return best_df, best_utility
 
     def achieve_klt_random(self, k, l, t, stop_utility=1.0, MAX_ITERS=1000):
@@ -361,7 +406,7 @@ class Anonymization:
         return best_df, best_utility
 
     def __generate_random_technique__(self, k, l, t, df, perturbation, best_utility, best_df, col):
-        n = random.randint(0, 3)
+        n = random.randint(0, 5)
         if n == 0:
             # GENERALIZATION CATEGORIES
             try:
@@ -408,9 +453,45 @@ class Anonymization:
                 best_utility = utility
             if best_utility >= self.stop_utility:
                 return best_df, best_utility
+        # PERTURBATION TECHNIQUES
         elif n == 3:
-            pass
-            # TODO PERTURBATION TECHNIQUES
+            try:
+                newDf = perturbation_permutation(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+        elif n == 4:
+            try:
+                newDf = perturbation_noise_addition(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+        elif n == 5:
+            try:
+                num_groups = np.arange(0.1, 0.9, 0.2)
+                for num_group in num_groups:
+                    newDf = perturbation_micro_aggregation(df, col, num_group)
+                    dfResult = self.__achieve_klt__(newDf, k, l, t)
+                    utility = (float(len(dfResult)) / len(df)) / (perturbation + num_group)
+                    if utility > best_utility:
+                        best_df = dfResult
+                        best_utility = utility
+                    if best_utility >= self.stop_utility:
+                        return best_df, best_utility
+            except:
+                pass
         return best_df, best_utility
 
     def integrate_arx(self):
