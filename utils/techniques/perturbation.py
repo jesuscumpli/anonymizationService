@@ -10,7 +10,8 @@ objective: apply a perturbation technique to the specified columns
 """
 
 import numpy as np
-
+import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
 
 def perturbation_noise_addition(dataframe, col_index):
     dfFinal = dataframe.copy(deep=True)
@@ -38,8 +39,7 @@ def perturbation_micro_aggregation(dataframe, col_index, num_group):
         mean_subgroup = np.mean(dfFinal[col_index].tolist()[int(i): int(i + num_items_group)])
         j = 0
         while j < num_items_group:
-            # dfFinal[col_index][j] = mean_subgroup
-            dfFinal.at[j, col_index] = mean_subgroup
+            dfFinal[col_index][j] = mean_subgroup
             j += 1
         i += num_items_group
     return dfFinal

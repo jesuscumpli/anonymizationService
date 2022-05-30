@@ -2,13 +2,7 @@
 # FUNCTIONS WITH ANONYMITY PROPERTIES  #
 ##########################################
 import random
-import time
-
-import numpy as np
-import pandas as pd
-import copy
 from scipy import stats
-
 from utils.techniques.generalization import generalization_categorical_semantic, generalization_mask, \
     generalization_numerical_interval
 from utils.techniques.perturbation import *
@@ -53,18 +47,21 @@ class Anonymization:
         self.k = 0
         self.l = 0
         self.t = 0
-        self.utility = 0
+        self.utility = 1.0
         self.iter = 0
         self.MAX_ITERS = None
         self.stop_utility = None
         self.list_cols = None
+        self.get_k_anonymity()  # Get the actual K
+        self.get_l_diversity()  # Get the actual L
+        self.get_t_closeness()  # Get the actual T
 
     def reset_dataframe_final(self):
         self.dataframeFinal = self.dataframeOrigen.copy(deep=True)
         self.k = 0
         self.l = 0
         self.t = 0
-        self.utility = 0
+        self.utility = 1.0
         self.iter = 0
         self.MAX_ITERS = None
         self.stop_utility = None
@@ -84,24 +81,14 @@ class Anonymization:
             groups_index[valueQuasiIdentifier].append(index)
         return groups_index
 
-    def __get_k_anonymity__(self, df):
-        """
-        Check if dataframeFinal has k-anonymity property
-        :param df: dataframe
-        :return: k
-        - Check if the number of unique rows by a list of columns are greater than k
-        """
-        unique_counts_rows = df.value_counts(self.quasi_identifiers_index).tolist()
-        return unique_counts_rows.min()
-
     def get_k_anonymity(self):
         """
         Check if dataframeFinal has k-anonymity property
         :return: k
         - Check if the number of unique rows by a list of columns are greater than k
         """
-        unique_counts_rows = self.dataframeFinal.value_counts(self.quasi_identifiers_index).tolist()
-        self.k = unique_counts_rows
+        unique_counts_rows = self.dataframeFinal.value_counts(self.quasi_identifiers_index)
+        self.k = unique_counts_rows.min()
         return self.k
 
     def check_k_anonymity(self, k):
@@ -137,17 +124,14 @@ class Anonymization:
 
             for i in self.sensible_index:
                 length = len(sensitiveValues[i])
-                if length >= l_res:
-                    l_res = length
-            if l_res < l:
-                return False
+                if length < l:
+                    return False
         return True
 
     def get_l_diversity(self):
         groups_index = self.__generate_groups__(self.dataframeFinal)
         l = len(self.dataframeFinal)
         for key, rows_index in groups_index.items():
-            l_group = 0
             sensitiveValues = {}
 
             for i in self.sensible_index:
@@ -161,10 +145,8 @@ class Anonymization:
 
             for i in self.sensible_index:
                 length = len(sensitiveValues[i])
-                if length >= l_group:
-                    l_group = length
-            if l_group < l:
-                l = l_group
+                if length < l:
+                    l = length
         self.l = l
         return l
 
@@ -217,7 +199,7 @@ class Anonymization:
             if t is not None:
                 # T-CLOSENESS
                 dfAux = df[df.index.isin(rows_index)]
-                pvalue = 1.0
+                statistic = 0.0
                 for col in self.sensible_index:
                     statistic, pvalue = stats.ks_2samp(df[col], dfAux[col])
                     if statistic < t:
