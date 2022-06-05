@@ -2,15 +2,10 @@
 # FUNCTIONS WITH ANONYMITY PROPERTIES  #
 ##########################################
 import random
-import time
-
-import numpy as np
-import pandas as pd
-import copy
 from scipy import stats
-
 from utils.techniques.generalization import generalization_categorical_semantic, generalization_mask, \
     generalization_numerical_interval
+from utils.techniques.perturbation import *
 
 """
 Definition of K-ANONYMITY:
@@ -52,18 +47,21 @@ class Anonymization:
         self.k = 0
         self.l = 0
         self.t = 0
-        self.utility = 0
+        self.utility = 1.0
         self.iter = 0
         self.MAX_ITERS = None
         self.stop_utility = None
         self.list_cols = None
+        self.get_k_anonymity()  # Get the actual K
+        self.get_l_diversity()  # Get the actual L
+        self.get_t_closeness()  # Get the actual T
 
     def reset_dataframe_final(self):
         self.dataframeFinal = self.dataframeOrigen.copy(deep=True)
         self.k = 0
         self.l = 0
         self.t = 0
-        self.utility = 0
+        self.utility = 1.0
         self.iter = 0
         self.MAX_ITERS = None
         self.stop_utility = None
@@ -83,24 +81,14 @@ class Anonymization:
             groups_index[valueQuasiIdentifier].append(index)
         return groups_index
 
-    def __get_k_anonymity__(self, df):
-        """
-        Check if dataframeFinal has k-anonymity property
-        :param df: dataframe
-        :return: k
-        - Check if the number of unique rows by a list of columns are greater than k
-        """
-        unique_counts_rows = df.value_counts(self.quasi_identifiers_index).tolist()
-        return unique_counts_rows.min()
-
     def get_k_anonymity(self):
         """
         Check if dataframeFinal has k-anonymity property
         :return: k
         - Check if the number of unique rows by a list of columns are greater than k
         """
-        unique_counts_rows = self.dataframeFinal.value_counts(self.quasi_identifiers_index).tolist()
-        self.k = unique_counts_rows
+        unique_counts_rows = self.dataframeFinal.value_counts(self.quasi_identifiers_index)
+        self.k = unique_counts_rows.min()
         return self.k
 
     def check_k_anonymity(self, k):
@@ -136,17 +124,14 @@ class Anonymization:
 
             for i in self.sensible_index:
                 length = len(sensitiveValues[i])
-                if length >= l_res:
-                    l_res = length
-            if l_res < l:
-                return False
+                if length < l:
+                    return False
         return True
 
     def get_l_diversity(self):
         groups_index = self.__generate_groups__(self.dataframeFinal)
         l = len(self.dataframeFinal)
         for key, rows_index in groups_index.items():
-            l_group = 0
             sensitiveValues = {}
 
             for i in self.sensible_index:
@@ -160,10 +145,8 @@ class Anonymization:
 
             for i in self.sensible_index:
                 length = len(sensitiveValues[i])
-                if length >= l_group:
-                    l_res = length
-            if l_group < l:
-                l = l_group
+                if length < l:
+                    l = length
         self.l = l
         return l
 
@@ -179,18 +162,18 @@ class Anonymization:
             dfAux = self.dataframeFinal[self.dataframeFinal.index.isin(rows_index)]
             for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], dfAux[col])
-                if pvalue > t:  # Reject Null Hypothesis, accept Alternative Hypothesis (The distributions are different)
+                if statistic < t:  # Reject Null Hypothesis, accept Alternative Hypothesis (The distributions are different)
                     return False
         return True
 
     def get_t_closeness(self):
-        t = 0.0
+        t = 1.0
         groups_index = self.__generate_groups__(self.dataframeFinal)
         for key, rows_index in groups_index.items():
             dfAux = self.dataframeFinal[self.dataframeFinal.index.isin(rows_index)]
             for col in self.sensible_index:
                 statistic, pvalue = stats.ks_2samp(self.dataframeOrigen[col], dfAux[col])
-                if pvalue > t:
+                if statistic < t:
                     t = statistic
         self.t = t
         return t
@@ -216,13 +199,13 @@ class Anonymization:
             if t is not None:
                 # T-CLOSENESS
                 dfAux = df[df.index.isin(rows_index)]
-                pvalue = 1.0
+                statistic = 0.0
                 for col in self.sensible_index:
                     statistic, pvalue = stats.ks_2samp(df[col], dfAux[col])
-                    if pvalue > t:
+                    if statistic < t:
                         dfResult.drop(dfGroups[key], axis=0, inplace=True)
                         break
-                if pvalue > t:
+                if statistic < t:
                     continue
             if l is not None:
                 # L-DIVERSITY
@@ -329,7 +312,51 @@ class Anonymization:
                                                                           best_utility, best_df)
                 if best_utility >= self.stop_utility:
                     return best_df, best_utility
-            # TODO PERTURBATION TECHNIQUES
+            # PERTURBATION TECHNIQUES
+            try:
+                newDf = perturbation_permutation(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                          perturbation + 0.1,
+                                                                          best_utility, best_df)
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+            try:
+                newDf = perturbation_noise_addition(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                          perturbation + 0.1,
+                                                                          best_utility, best_df)
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+            try:
+                num_groups = np.arange(0.1, 0.9, 0.2)
+                for num_group in num_groups:
+                    newDf = perturbation_micro_aggregation(df, col, num_group)
+                    dfResult = self.__achieve_klt__(newDf, k, l, t)
+                    utility = (float(len(dfResult)) / len(df)) / (perturbation + num_group)
+                    if utility > best_utility:
+                        best_df = dfResult
+                        best_utility = utility
+                    best_df, best_utility = self.__achieve_klt_backtracking__(start + 1, k, l, t, newDf,
+                                                                              perturbation + num_group,
+                                                                              best_utility, best_df)
+                    if best_utility >= self.stop_utility:
+                        return best_df, best_utility
+            except:
+                pass
         return best_df, best_utility
 
     def achieve_klt_random(self, k, l, t, stop_utility=1.0, MAX_ITERS=1000):
@@ -361,7 +388,7 @@ class Anonymization:
         return best_df, best_utility
 
     def __generate_random_technique__(self, k, l, t, df, perturbation, best_utility, best_df, col):
-        n = random.randint(0, 3)
+        n = random.randint(0, 5)
         if n == 0:
             # GENERALIZATION CATEGORIES
             try:
@@ -408,9 +435,45 @@ class Anonymization:
                 best_utility = utility
             if best_utility >= self.stop_utility:
                 return best_df, best_utility
+        # PERTURBATION TECHNIQUES
         elif n == 3:
-            pass
-            # TODO PERTURBATION TECHNIQUES
+            try:
+                newDf = perturbation_permutation(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+        elif n == 4:
+            try:
+                newDf = perturbation_noise_addition(df, col)
+                dfResult = self.__achieve_klt__(newDf, k, l, t)
+                utility = (float(len(dfResult)) / len(df)) / (perturbation + 0.1)
+                if utility > best_utility:
+                    best_df = dfResult
+                    best_utility = utility
+                if best_utility >= self.stop_utility:
+                    return best_df, best_utility
+            except:
+                pass
+        elif n == 5:
+            try:
+                num_groups = np.arange(0.1, 0.9, 0.2)
+                for num_group in num_groups:
+                    newDf = perturbation_micro_aggregation(df, col, num_group)
+                    dfResult = self.__achieve_klt__(newDf, k, l, t)
+                    utility = (float(len(dfResult)) / len(df)) / (perturbation + num_group)
+                    if utility > best_utility:
+                        best_df = dfResult
+                        best_utility = utility
+                    if best_utility >= self.stop_utility:
+                        return best_df, best_utility
+            except:
+                pass
         return best_df, best_utility
 
     def integrate_arx(self):
